@@ -31,12 +31,13 @@
     "openai": "^3.2.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "react-markdown": "^10.0.0",
     "react-webcam": "^7.0.1",
     "typescript": "5.0.4",
     "uuidv4": "^6.2.13"
   },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.9",
+    "@tailwindcss/typography": "^0.5.16",
     "@types/formidable": "^2.0.5",
     "autoprefixer": "^10.4.14",
     "postcss": "^8.4.24",

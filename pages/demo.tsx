@@ -6,6 +6,8 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import Webcam from "react-webcam";
 import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 import Header from "@/components/Header";
+import ReactMarkdown from 'react-markdown';
+   
 
 const questions = [
   {
@@ -384,16 +386,35 @@ export default function DemoPage() {
                   </p>
                 </div>
                 <div className="mt-8">
-                  <h2 className="text-xl font-semibold text-left text-[#1D2B3A] mb-2">
-                    Feedback
-                  </h2>
-                  <div className="mt-4 text-sm flex gap-2.5 rounded-lg border border-[#EEEEEE] bg-[#FAFAFA] p-4 leading-6 text-gray-900 min-h-[100px]">
-                    <p className="prose prose-sm max-w-none">
-                      {generatedFeedback}
-                    </p>
-                    
-                  </div>
-                </div>
+   
+  
+  <h2 className="text-xl font-semibold text-left text-[#1D2B3A] mb-2">
+    Feedback
+  </h2>
+  <div className="mt-4 text-base rounded-lg border border-[#EEEEEE] bg-[#FAFAFA] p-6 leading-7 text-gray-900 min-h-[100px]">
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => (
+          <p className="text-gray-800 mb-4">{children}</p>
+        ),
+        strong: ({ children }) => (
+          <strong className="font-semibold text-gray-900">{children}</strong>
+        ),
+        ul: ({ children }) => (
+          <ul className="list-disc pl-4 my-2">{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="list-decimal pl-4 my-2">{children}</ol>
+        ),
+        li: ({ children }) => (
+          <li className="text-gray-800 mb-1">{children}</li>
+        ),
+      }}
+    >
+      {generatedFeedback}
+    </ReactMarkdown>
+  </div>
+</div>
               </motion.div>
             </div>
           ) : (
