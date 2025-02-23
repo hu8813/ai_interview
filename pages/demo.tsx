@@ -238,25 +238,24 @@ export default function DemoPage() {
           
           const prompt = `
             Interview Question: ${question}
-            Transcript: ${results.transcript}
+            Candidate's Response: ${results.transcript}
+
+            Evaluate the response based on key factors:
 
             ${selected.name === "Behavioral"
-              ? `Evaluate response on:
-            1. STAR/PAR framework usage
-            2. Communication clarity
-            3. Relevance to question
-            4. Technical depth
-            5. Areas for improvement
-            6. Overall impression`
-              : `Evaluate response on:
-            1. Technical accuracy
-            2. Problem-solving approach
-            3. Communication clarity
-            4. Implementation awareness
-            5. Areas for improvement
-            6. Overall impression`}
+              ? `**Behavioral Criteria:**
+            - Use of STAR/PAR framework
+            - Clarity and relevance
+            - Depth of experience shared`
+              : `**Technical Criteria:**
+            - Accuracy and problem-solving approach
+            - Clarity and structure
+            - Consideration of edge cases and efficiency`}
 
-            Feedback:`;
+            Additionally, provide any other relevant feedback to improve the response.
+
+            **Feedback:**`; 
+
   
           const response = await fetch("/api/generate", {
             method: "POST",

@@ -29,14 +29,13 @@ const nextConfig = {
       },
     ];
   },
-  experimental: {
-    outputFileTracingExcludes: {
-      '*': [
-        'node_modules/@ffmpeg/**',
-        'node_modules/@azure/**',
-        'node_modules/encoding/**',
-      ],
-    },
+  // Moved from experimental to root level
+  outputFileTracingExcludes: {
+    '*': [
+      'node_modules/@ffmpeg/**',
+      'node_modules/@azure/**',
+      'node_modules/encoding/**',
+    ],
   },
 };
 
