@@ -26,14 +26,7 @@ export default async function OG() {
             "linear-gradient(to bottom right, #E0E7FF 25%, #ffffff 50%, #bde1ff 75%)",
         }}
       >
-        <img
-          src={new URL(
-            "../public/apple-touch-icon.png",
-            import.meta.url
-          ).toString()}
-          alt="Liftoff Logo"
-          tw="w-20 h-20 mb-4 opacity-95"
-        />
+        
         <h1
           style={{
             fontSize: "100px",
