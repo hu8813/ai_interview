@@ -22,11 +22,11 @@ const handler = async (req: Request): Promise<Response> => {
         },
         { role: "user", content: prompt },
       ],
-      temperature: 0.7,
+      temperature: 0.9,
       top_p: 1,
       frequency_penalty: 0,
       presence_penalty: 0,
-      max_tokens: 450,
+      max_tokens: 1000,
       stream: true,
       n: 1,
     };
