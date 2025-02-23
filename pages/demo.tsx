@@ -726,7 +726,7 @@ export default function DemoPage() {
                     ease: [0.165, 0.84, 0.44, 1],
                   }}
                   className="max-w-lg mx-auto px-4 lg:px-0"
-                >
+                ><h1>AI Interview Feedback Generator</h1>
                   <h2 className="text-4xl font-bold text-[#1E2B3A]">
                     Select a question type
                   </h2>
