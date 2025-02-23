@@ -237,14 +237,26 @@ export default function DemoPage() {
           const currentDateTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
           
           const prompt = `
-  Interview Question: ${question}
-  Transcript: ${results.transcript}
-  
-  ${selected.name === "Behavioral"
-    ? "Please provide feedback on the candidate's response, focusing on:\n1. Use of STAR or PAR framework\n2. Communication clarity\n3. Relevance to the question\n4. Areas for improvement"
-    : "Please provide feedback on the candidate's response, focusing on:\n1. Technical accuracy\n2. Communication clarity\n3. Problem-solving approach\n4. Areas for improvement"}
-  
-  Feedback on the candidate's response:`;
+            Interview Question: ${question}
+            Transcript: ${results.transcript}
+
+            ${selected.name === "Behavioral"
+              ? `Evaluate response on:
+            1. STAR/PAR framework usage
+            2. Communication clarity
+            3. Relevance to question
+            4. Technical depth
+            5. Areas for improvement
+            6. Overall impression`
+              : `Evaluate response on:
+            1. Technical accuracy
+            2. Problem-solving approach
+            3. Communication clarity
+            4. Implementation awareness
+            5. Areas for improvement
+            6. Overall impression`}
+
+            Feedback:`;
   
           const response = await fetch("/api/generate", {
             method: "POST",
