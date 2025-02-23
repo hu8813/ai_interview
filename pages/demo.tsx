@@ -84,18 +84,24 @@ export default function DemoPage() {
   useEffect(() => {
     setIsDesktop(window.innerWidth >= 768);
   }, []);
-
+  const handleDataAvailable = useCallback(
+    ({ data }: BlobEvent) => {
+      if (data.size > 0) {
+        setRecordedChunks((prev) => prev.concat(data));
+      }
+    },
+    [] // No dependencies needed as it only uses setRecordedChunks which is stable
+  );
   useEffect(() => {
     if (videoEnded) {
       const element = document.getElementById("startTimer");
-
       if (element) {
         element.style.display = "flex";
       }
-
+  
       setCapturing(true);
       setIsVisible(false);
-
+  
       mediaRecorderRef.current = new MediaRecorder(
         webcamRef?.current?.stream as MediaStream
       );
@@ -105,186 +111,195 @@ export default function DemoPage() {
       );
       mediaRecorderRef.current.start();
     }
-  }, [videoEnded, webcamRef, setCapturing, mediaRecorderRef]);
+  }, [videoEnded, handleDataAvailable]);
 
   const handleStartCaptureClick = useCallback(() => {
     const startTimer = document.getElementById("startTimer");
     if (startTimer) {
       startTimer.style.display = "none";
     }
-
+  
     if (vidRef.current) {
       vidRef.current.play();
     }
-  }, [webcamRef, setCapturing, mediaRecorderRef]);
+  }, []); // No dependencies needed as it only uses DOM manipulation and vidRef
 
-  const handleDataAvailable = useCallback(
-    ({ data }: BlobEvent) => {
-      if (data.size > 0) {
-        setRecordedChunks((prev) => prev.concat(data));
-      }
-    },
-    [setRecordedChunks]
-  );
+  
 
   const handleStopCaptureClick = useCallback(() => {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
     }
     setCapturing(false);
-  }, [mediaRecorderRef, webcamRef, setCapturing]);
+  }, []); // Only depends on mediaRecorderRef which is stable
 
   useEffect(() => {
     let timer: any = null;
     if (capturing) {
       timer = setInterval(() => {
-        setSeconds((seconds) => seconds - 1);
+        setSeconds((prevSeconds) => {
+          if (prevSeconds === 0) {
+            handleStopCaptureClick();
+            setCapturing(false);
+            return 0;
+          }
+          return prevSeconds - 1;
+        });
       }, 1000);
-      if (seconds === 0) {
-        handleStopCaptureClick();
-        setCapturing(false);
-        setSeconds(0);
-      }
     }
     return () => {
       clearInterval(timer);
     };
-  });
+  }, [capturing, handleStopCaptureClick]); // Add proper dependencies
 
   const handleDownload = async () => {
-    if (recordedChunks.length) {
+    if (!recordedChunks.length) return;
+    
+    try {
       setSubmitting(true);
       setStatus("Processing");
-
-      const file = new Blob(recordedChunks, {
-        type: `video/webm`,
-      });
-
+      setGeneratedFeedback("");
+      
+      // Create video blob
+      const file = new Blob(recordedChunks, { type: 'video/webm' });
       const unique_id = uuid();
-
-      // This checks if ffmpeg is loaded
-      if (!ffmpeg.isLoaded()) {
-        await ffmpeg.load();
-      }
-
-      // This writes the file to memory, removes the video, and converts the audio to mp3
-      ffmpeg.FS("writeFile", `${unique_id}.webm`, await fetchFile(file));
-      await ffmpeg.run(
-        "-i",
-        `${unique_id}.webm`,
-        "-vn",
-        "-acodec",
-        "libmp3lame",
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-f",
-        "mp3",
-        `${unique_id}.mp3`
-      );
-
-      // This reads the converted file from the file system
-      const fileData = ffmpeg.FS("readFile", `${unique_id}.mp3`);
-      // This creates a new file from the raw data
-      const output = new File([fileData.buffer], `${unique_id}.mp3`, {
-        type: "audio/mp3",
-      });
-
-      const formData = new FormData();
-      formData.append("file", output, `${unique_id}.mp3`);
-      formData.append("model", "whisper-1");
-
-      const question =
-        selected.name === "Behavioral"
-          ? `Tell me about yourself. Why don${`’`}t you walk me through your resume?`
+  
+      // Load and process with FFmpeg
+      try {
+        if (!ffmpeg.isLoaded()) {
+          await ffmpeg.load();
+        }
+  
+        ffmpeg.FS("writeFile", `${unique_id}.webm`, await fetchFile(file));
+        await ffmpeg.run(
+          "-i",
+          `${unique_id}.webm`,
+          "-vn",
+          "-acodec",
+          "libmp3lame",
+          "-ac",
+          "1",
+          "-ar",
+          "16000",
+          "-f",
+          "mp3",
+          `${unique_id}.mp3`
+        );
+  
+        const fileData = ffmpeg.FS("readFile", `${unique_id}.mp3`);
+        const output = new File([fileData.buffer], `${unique_id}.mp3`, {
+          type: "audio/mp3",
+        });
+  
+        // Clean up FFmpeg memory
+        ffmpeg.FS("unlink", `${unique_id}.webm`);
+        ffmpeg.FS("unlink", `${unique_id}.mp3`);
+  
+        // Prepare form data for transcription
+        const formData = new FormData();
+        formData.append("file", output, `${unique_id}.mp3`);
+        formData.append("model", "whisper-1");
+  
+        // Get the appropriate question based on selection
+        const question = selected.name === "Behavioral"
+          ? `Tell me about yourself. Why don't you walk me through your resume?`
           : selectedInterviewer.name === "John"
           ? "What is a Hash Table, and what is the average case and worst case time for each of its operations?"
           : selectedInterviewer.name === "Richard"
           ? "Uber is looking to expand its product line. Talk me through how you would approach this problem."
           : "You have a 3-gallon jug and 5-gallon jug, how do you measure out exactly 4 gallons?";
-
-      setStatus("Transcribing");
-
-      const upload = await fetch(
-        `/api/transcribe?question=${encodeURIComponent(question)}`,
-        {
-          method: "POST",
-          body: formData,
+  
+        setStatus("Transcribing");
+  
+        // Transcribe audio
+        const upload = await fetch(
+          `/api/transcribe?question=${encodeURIComponent(question)}`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+  
+        const results = await upload.json();
+  
+        if (!upload.ok) {
+          throw new Error(results.error || 'Transcription failed');
         }
-      );
-      const results = await upload.json();
-
-      if (upload.ok) {
+  
         setIsSuccess(true);
-        setSubmitting(false);
-
-        if (results.error) {
-          setTranscript(results.error);
-        } else {
-          setTranscript(results.transcript);
-        }
-
-        console.log("Uploaded successfully!");
-
-        await Promise.allSettled([
-          new Promise((resolve) => setTimeout(resolve, 800)),
-        ]).then(() => {
-          setCompleted(true);
-          console.log("Success!");
-        });
-
-        if (results.transcript.length > 0) {
-          const prompt = `Please give feedback on the following interview question: ${question} given the following transcript: ${
-            results.transcript
-          }. ${
-            selected.name === "Behavioral"
-              ? "Please also give feedback on the candidate's communication skills. Make sure their response is structured (perhaps using the STAR or PAR frameworks)."
-              : "Please also give feedback on the candidate's communication skills. Make sure they accurately explain their thoughts in a coherent way. Make sure they stay on topic and relevant to the question."
-          } \n\n\ Feedback on the candidate's response:`;
-
-          setGeneratedFeedback("");
+        setTranscript(results.transcript || results.error || 'No transcript generated');
+  
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCompleted(true);
+  
+        // Only proceed if we have a transcript
+        if (results.transcript?.length > 0) {
+          const currentDateTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          
+          const prompt = `
+  Interview Question: ${question}
+  Transcript: ${results.transcript}
+  
+  ${selected.name === "Behavioral"
+    ? "Please provide feedback on the candidate's response, focusing on:\n1. Use of STAR or PAR framework\n2. Communication clarity\n3. Relevance to the question\n4. Areas for improvement"
+    : "Please provide feedback on the candidate's response, focusing on:\n1. Technical accuracy\n2. Communication clarity\n3. Problem-solving approach\n4. Areas for improvement"}
+  
+  Feedback on the candidate's response:`;
+  
           const response = await fetch("/api/generate", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              prompt,
-            }),
+            body: JSON.stringify({ prompt }),
           });
-
+  
           if (!response.ok) {
-            throw new Error(response.statusText);
+            throw new Error('Failed to generate feedback');
           }
-
-          // This data is a ReadableStream
-          const data = response.body;
-          if (!data) {
-            return;
+  
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error('No response body');
           }
-
-          const reader = data.getReader();
-          const decoder = new TextDecoder();
-          let done = false;
-
-          while (!done) {
-            const { value, done: doneReading } = await reader.read();
-            done = doneReading;
-            const chunkValue = decoder.decode(value);
-            setGeneratedFeedback((prev: any) => prev + chunkValue);
+  
+          try {
+            const decoder = new TextDecoder();
+            while (true) {
+              const { value, done } = await reader.read();
+              
+              if (done) break;
+              
+              if (value) {
+                const text = decoder.decode(value, { stream: true });
+                setGeneratedFeedback(prev => prev + text);
+              }
+            }
+          } catch (error) {
+            console.error('Stream error:', error);
+            setGeneratedFeedback(prev => 
+              prev + '\n\nError: Connection lost while generating feedback. Please try again.'
+            );
+          } finally {
+            reader.releaseLock();
           }
         }
-      } else {
-        console.error("Upload failed.");
+      } catch (error) {
+        console.error('Processing error:', error);
+        setIsSuccess(false);
+        setTranscript('Error processing recording. Please try again.');
+        setGeneratedFeedback('');
       }
-
-      setTimeout(function () {
-        setRecordedChunks([]);
-      }, 1500);
+    } catch (error) {
+      console.error('Error:', error);
+      setIsSuccess(false);
+      setTranscript('An error occurred. Please try again.');
+      setGeneratedFeedback('');
+    } finally {
+      setSubmitting(false);
+      setTimeout(() => setRecordedChunks([]), 1500);
     }
   };
-
   function restartVideo() {
     setRecordedChunks([]);
     setVideoEnded(false);

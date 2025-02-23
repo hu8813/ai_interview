@@ -4,7 +4,6 @@ import { Metadata } from "next";
 export const metadata: Metadata = {
   title: "AI-Powered Interviews",
   
-  themeColor: "#FFF",
 };
 
 export default async function RootLayout({

@@ -2,16 +2,95 @@ export const config = {
   runtime: "edge",
 };
 
-const handler = async (req: Request): Promise<Response> => {
-  const { prompt } = (await req.json()) as {
-    prompt?: string;
-  };
+// Retry configuration
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 1000;
+const MAX_RETRY_DELAY = 5000;
 
-  if (!prompt) {
-    return new Response("No prompt in the request", { status: 400 });
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+class StreamError extends Error {
+  constructor(message: string, public readonly status: number = 500) {
+    super(message);
+    this.name = 'StreamError';
   }
+}
 
+async function fetchWithRetry(
+  url: string, 
+  options: RequestInit, 
+  retries = MAX_RETRIES, 
+  delay = INITIAL_RETRY_DELAY
+): Promise<Response> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new StreamError(`HTTP error! status: ${response.status} ${errorText}`, response.status);
+    }
+
+    return response;
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`Retrying request. Attempts remaining: ${retries}`);
+      const nextDelay = Math.min(delay * 2, MAX_RETRY_DELAY);
+      await sleep(delay);
+      return fetchWithRetry(url, options, retries - 1, nextDelay);
+    }
+    throw error;
+  }
+}
+
+function createParser() {
+  let buffer = '';
+  const decoder = new TextDecoder();
+  
+  return function parse(chunk: Uint8Array) {
+    buffer += decoder.decode(chunk, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    
+    const result: string[] = [];
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine === 'data: [DONE]') continue;
+      
+      if (trimmedLine.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(trimmedLine.slice(6));
+          if (data.choices?.[0]?.delta?.content) {
+            result.push(data.choices[0].delta.content);
+          }
+        } catch (e) {
+          console.warn('Parse error for line:', trimmedLine);
+        }
+      }
+    }
+    
+    return result;
+  };
+}
+
+const handler = async (req: Request): Promise<Response> => {
+  try {
+    const { prompt } = (await req.json()) as {
+      prompt?: string;
+    };
+
+    if (!prompt) {
+      throw new StreamError('No prompt in the request', 400);
+    }
+
     const payload = {
       model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME!,
       messages: [
@@ -22,103 +101,78 @@ const handler = async (req: Request): Promise<Response> => {
         },
         { role: "user", content: prompt },
       ],
-      temperature: 0.9,
+      temperature: 0.7,
       top_p: 1,
       frequency_penalty: 0,
       presence_penalty: 0,
-      max_tokens: 1000,
+      max_tokens: 1500,
       stream: true,
       n: 1,
     };
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${process.env.AZURE_OPENAI_ENDPOINT}/openai/deployments/${process.env.AZURE_OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version=2024-02-15-preview`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'api-key': process.env.AZURE_OPENAI_API_KEY!,
+          'Accept': 'text/event-stream',
         },
         body: JSON.stringify(payload),
       }
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Chat completion error:', errorText);
-      throw new Error(`Chat completion failed: ${response.statusText}. ${errorText}`);
-    }
-
-    // Create a new readable stream
-    const reader = response.body!.getReader();
+    const parser = createParser();
     const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
 
-    let buffer = '';
-
-    const stream = new ReadableStream({
-      async start(controller) {
+    const transformStream = new TransformStream({
+      transform(chunk: Uint8Array, controller) {
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            // Decode the chunk and add it to the buffer
-            buffer += decoder.decode(value, { stream: true });
-            
-            // Process complete lines from the buffer
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  if (data.choices?.[0]?.delta?.content) {
-                    // Send just the content without 'data: ' prefix
-                    controller.enqueue(encoder.encode(data.choices[0].delta.content));
-                  }
-                } catch (e) {
-                  // Ignore parsing errors
-                }
-              }
-            }
-          }
+          if (chunk.length === 0) return;
           
-          // Process any remaining data in the buffer
-          if (buffer) {
-            const line = buffer;
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.choices?.[0]?.delta?.content) {
-                  controller.enqueue(encoder.encode(data.choices[0].delta.content));
-                }
-              } catch (e) {
-                // Ignore parsing errors
-              }
-            }
+          const parsed = parser(chunk);
+          for (const text of parsed) {
+            controller.enqueue(encoder.encode(text));
           }
-          
-          controller.close();
         } catch (error) {
+          console.error('Transform error:', error);
           controller.error(error);
         }
-      },
+      }
     });
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/plain', // Changed to text/plain since we're not using SSE format
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
-  } catch (error) {
-    console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: "Error generating response" }),
-      { status: 500 }
+      response.body?.pipeThrough(transformStream),
+      {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Content-Type-Options': 'nosniff',
+          'Transfer-Encoding': 'chunked',
+        },
+      }
+    );
+
+  } catch (error) {
+    console.error("Error in handler:", error);
+    
+    const statusCode = error instanceof StreamError ? error.status : 500;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    return new Response(
+      JSON.stringify({ 
+        error: "Error generating response", 
+        details: errorMessage,
+        timestamp: new Date().toISOString(),
+      }),
+      { 
+        status: statusCode,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        }
+      }
     );
   }
 };
