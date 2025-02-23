@@ -11,7 +11,7 @@ export interface ChatGPTMessage {
   content: string;
 }
 
-export interface OpenAIStreamPayload {
+export interface AzureOpenAIStreamPayload {
   model: string;
   messages: ChatGPTMessage[];
   temperature: number;
@@ -23,20 +23,23 @@ export interface OpenAIStreamPayload {
   n: number;
 }
 
-export async function OpenAIStream(payload: OpenAIStreamPayload) {
+export async function AzureOpenAIStream(payload: AzureOpenAIStreamPayload) {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
   let counter = 0;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}`,
-    },
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  const res = await fetch(
+    `${process.env.AZURE_OPENAI_ENDPOINT}/openai/deployments/${payload.model}/chat/completions?api-version=2023-07-01-preview`,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": process.env.AZURE_OPENAI_API_KEY ?? "",
+      },
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -44,7 +47,6 @@ export async function OpenAIStream(payload: OpenAIStreamPayload) {
       function onParse(event: ParsedEvent | ReconnectInterval) {
         if (event.type === "event") {
           const data = event.data;
-          // https://beta.openai.com/docs/api-reference/completions/create#completions/create-stream
           if (data === "[DONE]") {
             controller.close();
             return;
@@ -66,7 +68,7 @@ export async function OpenAIStream(payload: OpenAIStreamPayload) {
         }
       }
 
-      // stream response (SSE) from OpenAI may be fragmented into multiple chunks
+      // stream response (SSE) from Azure OpenAI may be fragmented into multiple chunks
       // this ensures we properly read chunks and invoke an event for each SSE event stream
       const parser = createParser(onParse);
       // https://web.dev/streams/#asynchronous-iteration

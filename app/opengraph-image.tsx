@@ -45,7 +45,7 @@ export default async function OG() {
             letterSpacing: "-0.02em",
           }}
         >
-          AI Mock Interviews
+          AI Interviews
         </h1>
       </div>
     ),

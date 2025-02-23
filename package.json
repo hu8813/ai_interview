@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@azure/core-auth": "^1.9.0",
+    "@azure/openai": "^2.0.0",
     "@ffmpeg/core": "^0.11.0",
     "@ffmpeg/ffmpeg": "^0.11.6",
     "@headlessui/react": "^1.7.14",
@@ -22,6 +24,7 @@
     "eslint": "8.41.0",
     "eslint-config-next": "13.4.4",
     "eventsource-parser": "^1.0.0",
+    "form-data": "^4.0.2",
     "formidable": "^2.1.1",
     "framer-motion": "^10.12.5",
     "next": "13.4.4",
